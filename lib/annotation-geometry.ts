@@ -55,9 +55,11 @@ export function getAnnotationGeometry(
   const radiusY = Math.max(size * 0.076, 28) * scale;
   const lineWidth = Math.max(5, Math.round(size * 0.008));
 
-  const labelWidth = clamp(width * 0.36, 220, Math.max(220, width - 28));
-  const labelHeight = clamp(size * 0.1, 64, 150);
-  const fontSize = Math.max(20, Math.round(labelHeight * 0.32));
+  // 文字サイズも画像の短辺に比例させ、高解像度の写真でも小さくならないようにする。
+  // ラベル幅は文字サイズ基準で決め、テンプレ文（最長13文字）がほぼ1行に収まるようにする。
+  const fontSize = Math.max(Math.round(size * 0.05), 26);
+  const labelWidth = clamp(fontSize * 13, 300, Math.max(300, width - 12));
+  const labelHeight = Math.round(fontSize * 2.5);
   const margin = Math.max(14, Math.round(size * 0.02));
   const gap = Math.max(18, Math.round(size * 0.04));
 

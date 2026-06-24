@@ -863,6 +863,8 @@ function AnnotationShape({
           style={{
             fontSize: `${g.fontSize}px`,
             padding: `${Math.round(g.fontSize * 0.35)}px ${Math.round(g.fontSize * 0.6)}px`,
+            borderWidth: `${Math.max(3, Math.round(g.fontSize * 0.12))}px`,
+            borderRadius: `${Math.max(10, Math.round(g.fontSize * 0.3))}px`,
           }}
         >
           {annotation.instruction}
