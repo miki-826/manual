@@ -222,9 +222,11 @@ export default function Home() {
 
   const addAnnotation = (point: Point) => {
     const id = crypto.randomUUID();
+    // スマホでは指で見やすいよう最初から少し大きめに表示する。
+    const scale = isMobileDevice() ? 1.4 : 1;
     pushAnnotations([
       ...annotations,
-      { id, target: point, instruction: DEFAULT_INSTRUCTION, scale: 1 },
+      { id, target: point, instruction: DEFAULT_INSTRUCTION, scale },
     ]);
     setSelectedId(id);
   };
@@ -283,20 +285,24 @@ export default function Home() {
 
   const copyImage = async () => {
     if (!image) return;
+    if (!navigator.clipboard || typeof ClipboardItem === "undefined") {
+      await downloadImage();
+      showToast({ tone: "warn", message: "このブラウザは画像コピー非対応のため、PNGを保存しました。共有もご利用ください。" });
+      return;
+    }
     setIsExporting(true);
     try {
-      const blob = await exportAnnotatedImage(image.dataUrl, image.width, image.height, annotations);
-      if (!navigator.clipboard || typeof ClipboardItem === "undefined") {
-        downloadBlob(blob, makeFileName());
-        showToast({ tone: "warn", message: "直接コピーできないため、PNGを保存しました。" });
-        return;
-      }
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      // iOS Safari対策: Blob生成をawaitせずPromiseのままClipboardItemへ渡し、
+      // ユーザー操作(タップ)のアクティベーションを維持する。
+      const item = new ClipboardItem({
+        "image/png": exportAnnotatedImage(image.dataUrl, image.width, image.height, annotations),
+      });
+      await navigator.clipboard.write([item]);
       showToast({ tone: "ok", message: "画像をコピーしました。そのまま相手へ貼り付けられます。" });
     } catch {
       const blob = await exportAnnotatedImage(image.dataUrl, image.width, image.height, annotations);
       downloadBlob(blob, makeFileName());
-      showToast({ tone: "warn", message: "コピーに失敗したため、PNGを保存しました。" });
+      showToast({ tone: "warn", message: "コピーできなかったため、PNGを保存しました。共有もご利用ください。" });
     } finally {
       setIsExporting(false);
     }
@@ -389,7 +395,7 @@ export default function Home() {
             </div>
           </section>
         ) : (
-          <section className="grid flex-1 gap-4 py-4 lg:grid-cols-[1fr_320px]">
+          <section className="grid flex-1 gap-4 py-4 pb-28 lg:grid-cols-[1fr_320px] lg:pb-4">
             <ImageEditor
               image={image}
               annotations={displayAnnotations}
@@ -401,12 +407,14 @@ export default function Home() {
               onDragCancel={cancelDrag}
             />
             <aside className="flex flex-col gap-3">
-              <ExportActions
-                disabled={isExporting}
-                onCopy={copyImage}
-                onDownload={downloadImage}
-                onShare={shareImage}
-              />
+              <div className="hidden lg:block">
+                <ExportActions
+                  disabled={isExporting}
+                  onCopy={copyImage}
+                  onDownload={downloadImage}
+                  onShare={shareImage}
+                />
+              </div>
 
               <section className="rounded-lg border border-[#dedbd2] bg-white p-4">
                 <div className="flex items-center justify-between">
@@ -489,8 +497,62 @@ export default function Home() {
           </section>
         )}
       </div>
-      {toast && <Toast toast={toast} />}
+      {image && (
+        <MobileActionBar
+          disabled={isExporting}
+          onShare={shareImage}
+          onCopy={copyImage}
+          onDownload={downloadImage}
+        />
+      )}
+      {toast && <Toast toast={toast} hasBar={Boolean(image)} />}
     </main>
+  );
+}
+
+function MobileActionBar({
+  disabled,
+  onShare,
+  onCopy,
+  onDownload,
+}: {
+  disabled: boolean;
+  onShare: () => void;
+  onCopy: () => void;
+  onDownload: () => void;
+}) {
+  return (
+    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[#dedbd2] bg-[#f7f7f4]/95 px-3 pt-3 backdrop-blur lg:hidden" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
+      <div className="mx-auto flex w-full max-w-2xl items-stretch gap-2">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onShare}
+          className="primary-skin-button flex min-h-[52px] flex-1 items-center justify-center gap-2 px-4 text-base font-bold text-white disabled:cursor-wait disabled:opacity-65"
+        >
+          <Share2 size={20} />
+          {disabled ? "作成中..." : "共有"}
+        </button>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onCopy}
+          className="flex min-h-[52px] items-center justify-center gap-1.5 rounded-md border border-[#d8d3ca] bg-white px-4 text-sm font-bold transition active:bg-[#f1ede2] disabled:opacity-50"
+        >
+          <Clipboard size={18} />
+          コピー
+        </button>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onDownload}
+          aria-label="PNGを保存"
+          className="flex min-h-[52px] items-center justify-center rounded-md border border-[#d8d3ca] bg-white px-3 text-sm font-bold transition active:bg-[#f1ede2] disabled:opacity-50"
+        >
+          <Download size={18} />
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -723,7 +785,7 @@ function ImageEditor({
           <img
             src={image.dataUrl}
             alt="編集対象の画像"
-            className="block max-h-[68vh] max-w-full select-none object-contain"
+            className="block max-h-[58vh] max-w-full select-none object-contain lg:max-h-[68vh]"
             draggable={false}
           />
           <SvgOverlay width={width} height={height} annotations={annotations} selectedId={selectedId} />
@@ -901,10 +963,12 @@ function ToolButton({
   );
 }
 
-function Toast({ toast }: { toast: ToastState }) {
+function Toast({ toast, hasBar }: { toast: ToastState; hasBar: boolean }) {
   return (
     <div
-      className={`fixed bottom-4 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-lg border px-4 py-3 text-sm font-semibold shadow-lg sm:left-auto sm:right-4 sm:translate-x-0 ${
+      className={`fixed left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-lg border px-4 py-3 text-sm font-semibold shadow-lg sm:left-auto sm:right-4 sm:translate-x-0 ${
+        hasBar ? "bottom-24 lg:bottom-4" : "bottom-4"
+      } ${
         toast.tone === "ok" ? "border-[#9fc9ae] bg-[#eef9f1] text-[#20583d]" : "border-[#e2c075] bg-[#fff8de] text-[#6f4d00]"
       }`}
       role="status"
@@ -950,4 +1014,9 @@ function makeFileName() {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function isMobileDevice() {
+  if (typeof window === "undefined" || !window.matchMedia) return false;
+  return window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(max-width: 640px)").matches;
 }
