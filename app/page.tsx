@@ -222,11 +222,9 @@ export default function Home() {
 
   const addAnnotation = (point: Point) => {
     const id = crypto.randomUUID();
-    // スマホでは指で見やすいよう最初から少し大きめに表示する。
-    const scale = isMobileDevice() ? 1.4 : 1;
     pushAnnotations([
       ...annotations,
-      { id, target: point, instruction: DEFAULT_INSTRUCTION, scale },
+      { id, target: point, instruction: DEFAULT_INSTRUCTION, scale: 1 },
     ]);
     setSelectedId(id);
   };
@@ -455,8 +453,8 @@ export default function Home() {
                   </span>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  <ToolButton disabled={!selectedAnnotation} onClick={() => resizeSelected(1 / 1.2)} icon={<Minus size={18} />} label="小さく" />
-                  <ToolButton disabled={!selectedAnnotation} onClick={() => resizeSelected(1.2)} icon={<Plus size={18} />} label="大きく" />
+                  <ToolButton disabled={!selectedAnnotation} onClick={() => resizeSelected(1 / 1.3)} icon={<Minus size={18} />} label="小さく" />
+                  <ToolButton disabled={!selectedAnnotation} onClick={() => resizeSelected(1.3)} icon={<Plus size={18} />} label="大きく" />
                 </div>
                 <p className="mt-2 text-xs leading-5 text-[#8b867c]">
                   画像上の丸をドラッグで移動、右下の白い印をドラッグで大きさを変えられます。
@@ -1014,9 +1012,4 @@ function makeFileName() {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
-}
-
-function isMobileDevice() {
-  if (typeof window === "undefined" || !window.matchMedia) return false;
-  return window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(max-width: 640px)").matches;
 }

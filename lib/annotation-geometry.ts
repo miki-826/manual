@@ -11,7 +11,7 @@ export type Annotation = {
 };
 
 export const MIN_SCALE = 0.4;
-export const MAX_SCALE = 3;
+export const MAX_SCALE = 6;
 
 export type LabelBox = {
   x: number;
@@ -49,8 +49,10 @@ export function getAnnotationGeometry(
     y: clamp(annotation.target.y, 0, 1) * height,
   };
   const scale = clamp(annotation.scale ?? 1, MIN_SCALE, MAX_SCALE);
-  const radiusX = clamp(size * 0.075, 34, 88) * scale;
-  const radiusY = clamp(size * 0.052, 26, 68) * scale;
+  // 基準サイズは画像の短辺に比例（端末非依存で統一）。上限カットはせず、
+  // 高解像度のスマホ写真でも相対的に同じ大きさに見えるようにする。
+  const radiusX = Math.max(size * 0.11, 40) * scale;
+  const radiusY = Math.max(size * 0.076, 28) * scale;
   const lineWidth = Math.max(5, Math.round(size * 0.008));
 
   const labelWidth = clamp(width * 0.36, 220, Math.max(220, width - 28));
