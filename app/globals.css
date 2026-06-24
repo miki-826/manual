@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f7f7f4;
+  --foreground: #252525;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), "Yu Gothic", "Hiragino Kaku Gothic ProN", Meiryo, system-ui, sans-serif;
+}
+
+button {
+  letter-spacing: 0;
+}
+
+.primary-skin-button {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 8px;
+  border: 1px solid #a91717;
+  background: #d92727;
+  box-shadow: 0 2px 0 #8f1515;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    filter 160ms ease;
+}
+
+.primary-skin-button::before {
+  content: "";
+  position: absolute;
+  inset: -16px;
+  z-index: -1;
+  background-image: url("/images/ui/primary-control-skin.png");
+  background-size: 100% 100%;
+  background-position: center;
+  opacity: 0.52;
+  pointer-events: none;
+}
+
+.primary-skin-button:hover {
+  filter: saturate(1.04) contrast(1.03);
+}
+
+.primary-skin-button:active {
+  transform: translateY(2px);
+  box-shadow: 0 0 0 #8f1515;
+}
+
+.annotation-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border: 3px solid #d92727;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 97%);
+  color: #252525;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  box-shadow: 0 1px 0 rgb(0 0 0 / 8%);
+}

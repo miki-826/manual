@@ -1,0 +1,28 @@
+{
+  "generated_this_run": 3,
+  "provider": "Codex built-in image_gen",
+  "generation_limit": 5,
+  "assets": [
+    {
+      "category": "background",
+      "path": "public/images/ui/paper-workbench.png",
+      "source": "C:/Users/micke/.codex/generated_images/019ef914-9fd7-7f92-b2a4-765d3ddefd49/ig_0f5177856117e8dc016a3bac0fd1dc8191839404fe80c85199.png",
+      "generated": true,
+      "integrated": true
+    },
+    {
+      "category": "control-skin",
+      "path": "public/images/ui/primary-control-skin.png",
+      "source": "C:/Users/micke/.codex/generated_images/019ef914-9fd7-7f92-b2a4-765d3ddefd49/ig_0f5177856117e8dc016a3bac41e93c8191a54a87174729d3d2.png",
+      "generated": true,
+      "integrated": true
+    },
+    {
+      "category": "motif",
+      "path": "public/images/ui/red-pen-motif.png",
+      "source": "C:/Users/micke/.codex/generated_images/019ef914-9fd7-7f92-b2a4-765d3ddefd49/ig_0f5177856117e8dc016a3bac6248548191bdc04e0226a46330.png",
+      "generated": true,
+      "integrated": true
+    }
+  ]
+}
