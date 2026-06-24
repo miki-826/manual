@@ -7,7 +7,11 @@ export type Annotation = {
   id: string;
   target: Point;
   instruction: string;
+  scale?: number;
 };
+
+export const MIN_SCALE = 0.4;
+export const MAX_SCALE = 3;
 
 export type LabelBox = {
   x: number;
@@ -25,6 +29,7 @@ export type AnnotationGeometry = {
   label: LabelBox;
   lineWidth: number;
   fontSize: number;
+  handle: { x: number; y: number; r: number };
 };
 
 export const DEFAULT_INSTRUCTION = "ここを押してください";
@@ -40,11 +45,12 @@ export function getAnnotationGeometry(
 ): AnnotationGeometry {
   const size = Math.min(width, height);
   const target = {
-    x: annotation.target.x * width,
-    y: annotation.target.y * height,
+    x: clamp(annotation.target.x, 0, 1) * width,
+    y: clamp(annotation.target.y, 0, 1) * height,
   };
-  const radiusX = clamp(size * 0.075, 34, 88);
-  const radiusY = clamp(size * 0.052, 26, 68);
+  const scale = clamp(annotation.scale ?? 1, MIN_SCALE, MAX_SCALE);
+  const radiusX = clamp(size * 0.075, 34, 88) * scale;
+  const radiusY = clamp(size * 0.052, 26, 68) * scale;
   const lineWidth = Math.max(5, Math.round(size * 0.008));
 
   const labelWidth = clamp(width * 0.36, 220, Math.max(220, width - 28));
@@ -106,7 +112,14 @@ export function getAnnotationGeometry(
     y: target.y + Math.sin(angle) * (radiusY + lineWidth * 1.5),
   };
 
-  return { target, radiusX, radiusY, arrowStart, arrowEnd, label, lineWidth, fontSize };
+  // 大きさ変更ハンドル: 円の右下外周に置く。
+  const handle = {
+    x: target.x + radiusX * Math.SQRT1_2,
+    y: target.y + radiusY * Math.SQRT1_2,
+    r: Math.max(9, size * 0.02),
+  };
+
+  return { target, radiusX, radiusY, arrowStart, arrowEnd, label, lineWidth, fontSize, handle };
 }
 
 function getArrowStart(dir: Direction, label: LabelBox, target: Point, pad: number): Point {
@@ -123,5 +136,6 @@ function getArrowStart(dir: Direction, label: LabelBox, target: Point, pad: numb
 }
 
 function clamp(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, value));
 }

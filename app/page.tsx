@@ -6,6 +6,8 @@ import {
   Download,
   FileImage,
   ImagePlus,
+  Minus,
+  Plus,
   RotateCcw,
   RotateCw,
   Share2,
@@ -17,6 +19,8 @@ import { exportAnnotatedImage, shareAnnotatedImage } from "@/lib/export-image";
 import {
   DEFAULT_INSTRUCTION,
   getAnnotationGeometry,
+  MAX_SCALE,
+  MIN_SCALE,
   type Annotation,
   type Point,
 } from "@/lib/annotation-geometry";
@@ -50,10 +54,13 @@ export default function Home() {
   const [isDragging, setIsDragging] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [liveAnnotations, setLiveAnnotations] = useState<Annotation[] | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const annotations = useMemo(() => history[historyIndex] ?? [], [history, historyIndex]);
-  const selectedAnnotation = annotations.at(-1) ?? null;
+  const displayAnnotations = liveAnnotations ?? annotations;
+  const selectedAnnotation = displayAnnotations.find((a) => a.id === selectedId) ?? null;
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < history.length - 1;
 
@@ -95,6 +102,8 @@ export default function Home() {
       setImage(nextImage);
       setHistory([[]]);
       setHistoryIndex(0);
+      setSelectedId(null);
+      setLiveAnnotations(null);
       setHasRecovery(false);
       await saveProject({ image: nextImage, annotations: [] });
       showToast({ tone: "ok", message: "画像を読み込みました。押してほしい場所を選んでください。" });
@@ -145,6 +154,8 @@ export default function Home() {
     });
     setHistory([saved.annotations]);
     setHistoryIndex(0);
+    setSelectedId(null);
+    setLiveAnnotations(null);
     setHasRecovery(false);
     showToast({ tone: "ok", message: "前回の編集を復元しました。" });
   };
@@ -191,22 +202,38 @@ export default function Home() {
     };
   }, [handleFiles]);
 
+  useEffect(() => {
+    if (!image) return;
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "TEXTAREA" || target.tagName === "INPUT")) return;
+      if (event.key === "Escape") {
+        setSelectedId(null);
+        setLiveAnnotations(null);
+      } else if ((event.key === "Delete" || event.key === "Backspace") && selectedId) {
+        event.preventDefault();
+        pushAnnotations(annotations.filter((a) => a.id !== selectedId));
+        setSelectedId(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [image, selectedId, annotations, pushAnnotations]);
+
   const addAnnotation = (point: Point) => {
-    const next = [
+    const id = crypto.randomUUID();
+    pushAnnotations([
       ...annotations,
-      {
-        id: crypto.randomUUID(),
-        target: point,
-        instruction: DEFAULT_INSTRUCTION,
-      },
-    ];
-    pushAnnotations(next);
+      { id, target: point, instruction: DEFAULT_INSTRUCTION, scale: 1 },
+    ]);
+    setSelectedId(id);
   };
 
   const updateInstruction = (instruction: string) => {
     if (!selectedAnnotation) return;
+    const selected = selectedAnnotation.id;
     const next = annotations.map((annotation) =>
-      annotation.id === selectedAnnotation.id ? { ...annotation, instruction } : annotation,
+      annotation.id === selected ? { ...annotation, instruction } : annotation,
     );
     setHistory((current) => current.map((entry, index) => (index === historyIndex ? next : entry)));
   };
@@ -216,15 +243,34 @@ export default function Home() {
     pushAnnotations(annotations);
   };
 
-  const removeLastAnnotation = () => {
-    if (!annotations.length) return;
-    pushAnnotations(annotations.slice(0, -1));
+  const resizeSelected = (factor: number) => {
+    if (!selectedAnnotation) return;
+    const selected = selectedAnnotation.id;
+    const scale = clamp((selectedAnnotation.scale ?? 1) * factor, MIN_SCALE, MAX_SCALE);
+    pushAnnotations(annotations.map((a) => (a.id === selected ? { ...a, scale } : a)));
   };
+
+  const removeSelected = () => {
+    if (!selectedAnnotation) return;
+    const selected = selectedAnnotation.id;
+    pushAnnotations(annotations.filter((a) => a.id !== selected));
+    setSelectedId(null);
+  };
+
+  // ドラッグ中の一時表示。確定時のみ履歴へ積む（移動/リサイズを1ステップでundo可能に）。
+  const beginDrag = (next: Annotation[]) => setLiveAnnotations(next);
+  const endDrag = (next: Annotation[]) => {
+    setLiveAnnotations(null);
+    pushAnnotations(next);
+  };
+  const cancelDrag = () => setLiveAnnotations(null);
 
   const resetAll = async () => {
     setImage(null);
     setHistory([[]]);
     setHistoryIndex(0);
+    setSelectedId(null);
+    setLiveAnnotations(null);
     await clearSavedProject();
     setHasRecovery(false);
   };
@@ -338,7 +384,16 @@ export default function Home() {
           </section>
         ) : (
           <section className="grid flex-1 gap-4 py-4 lg:grid-cols-[1fr_320px]">
-            <ImageEditor image={image} annotations={annotations} onAddAnnotation={addAnnotation} />
+            <ImageEditor
+              image={image}
+              annotations={displayAnnotations}
+              selectedId={selectedId}
+              onAddAnnotation={addAnnotation}
+              onSelect={setSelectedId}
+              onDragLive={beginDrag}
+              onDragEnd={endDrag}
+              onDragCancel={cancelDrag}
+            />
             <aside className="flex flex-col gap-3">
               <ExportActions
                 disabled={isExporting}
@@ -348,7 +403,12 @@ export default function Home() {
               />
 
               <section className="rounded-lg border border-[#dedbd2] bg-white p-4">
-                <h2 className="text-base font-bold">説明文</h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-bold">説明文</h2>
+                  <span className="text-xs text-[#8b867c]">
+                    {selectedAnnotation ? "選択中の案内を編集" : "画像上の丸を押すと選択"}
+                  </span>
+                </div>
                 <textarea
                   value={selectedAnnotation?.instruction ?? ""}
                   disabled={!selectedAnnotation}
@@ -377,11 +437,27 @@ export default function Home() {
               </section>
 
               <section className="rounded-lg border border-[#dedbd2] bg-white p-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-bold">大きさ</h2>
+                  <span className="text-xs text-[#8b867c]">
+                    {selectedAnnotation ? `${Math.round((selectedAnnotation.scale ?? 1) * 100)}%` : "未選択"}
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <ToolButton disabled={!selectedAnnotation} onClick={() => resizeSelected(1 / 1.2)} icon={<Minus size={18} />} label="小さく" />
+                  <ToolButton disabled={!selectedAnnotation} onClick={() => resizeSelected(1.2)} icon={<Plus size={18} />} label="大きく" />
+                </div>
+                <p className="mt-2 text-xs leading-5 text-[#8b867c]">
+                  画像上の丸をドラッグで移動、右下の白い印をドラッグで大きさを変えられます。
+                </p>
+              </section>
+
+              <section className="rounded-lg border border-[#dedbd2] bg-white p-4">
                 <h2 className="text-base font-bold">調整</h2>
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <ToolButton disabled={!canUndo} onClick={() => setHistoryIndex(historyIndex - 1)} icon={<RotateCcw size={18} />} label="元に戻す" />
                   <ToolButton disabled={!canRedo} onClick={() => setHistoryIndex(historyIndex + 1)} icon={<RotateCw size={18} />} label="やり直す" />
-                  <ToolButton disabled={!annotations.length} onClick={removeLastAnnotation} icon={<Trash2 size={18} />} label="最後を削除" />
+                  <ToolButton disabled={!selectedAnnotation} onClick={removeSelected} icon={<Trash2 size={18} />} label="選択を削除" />
                   <ToolButton onClick={() => inputRef.current?.click()} icon={<ImagePlus size={18} />} label="新しい画像" />
                 </div>
                 <button
@@ -476,23 +552,141 @@ function RecoveryPrompt({ onRestore, onDiscard }: { onRestore: () => void; onDis
   );
 }
 
+type DragSession = {
+  mode: "move" | "resize";
+  id: string;
+  base: Annotation[];
+  startNorm: Point;
+  startTarget: Point;
+  startScale: number;
+  startDistPx: number;
+  moved: boolean;
+  last: Annotation[];
+};
+
 function ImageEditor({
   image,
   annotations,
+  selectedId,
   onAddAnnotation,
+  onSelect,
+  onDragLive,
+  onDragEnd,
+  onDragCancel,
 }: {
   image: ImageState;
   annotations: Annotation[];
+  selectedId: string | null;
   onAddAnnotation: (point: Point) => void;
+  onSelect: (id: string) => void;
+  onDragLive: (next: Annotation[]) => void;
+  onDragEnd: (next: Annotation[]) => void;
+  onDragCancel: () => void;
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<DragSession | null>(null);
+  const { width, height } = image;
+
+  const toNorm = (event: React.PointerEvent): Point | null => {
+    const rect = frameRef.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0 || rect.height === 0) return null;
+    return {
+      x: clamp((event.clientX - rect.left) / rect.width, 0, 1),
+      y: clamp((event.clientY - rect.top) / rect.height, 0, 1),
+    };
+  };
+
+  const setCursor = (value: string) => {
+    if (frameRef.current && frameRef.current.style.cursor !== value) {
+      frameRef.current.style.cursor = value;
+    }
+  };
+
+  const hitTest = (np: Point): { mode: "move" | "resize"; annotation: Annotation } | null => {
+    const px = { x: np.x * width, y: np.y * height };
+    const selected = annotations.find((a) => a.id === selectedId);
+    if (selected) {
+      const g = getAnnotationGeometry(selected, width, height);
+      if (Math.hypot(px.x - g.handle.x, px.y - g.handle.y) <= g.handle.r * 1.8) {
+        return { mode: "resize", annotation: selected };
+      }
+    }
+    for (let i = annotations.length - 1; i >= 0; i -= 1) {
+      const a = annotations[i];
+      const g = getAnnotationGeometry(a, width, height);
+      const dx = (px.x - g.target.x) / g.radiusX;
+      const dy = (px.y - g.target.y) / g.radiusY;
+      if (dx * dx + dy * dy <= 1) return { mode: "move", annotation: a };
+    }
+    return null;
+  };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    const rect = frameRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const x = clamp((event.clientX - rect.left) / rect.width, 0, 1);
-    const y = clamp((event.clientY - rect.top) / rect.height, 0, 1);
-    onAddAnnotation({ x, y });
+    if (!frameRef.current) return;
+    const np = toNorm(event);
+    if (!np) return;
+    const hit = hitTest(np);
+    if (!hit) {
+      onAddAnnotation(np);
+      return;
+    }
+    onSelect(hit.annotation.id);
+    const g = getAnnotationGeometry(hit.annotation, width, height);
+    const distPx = Math.hypot(np.x * width - g.target.x, np.y * height - g.target.y) || 1;
+    dragRef.current = {
+      mode: hit.mode,
+      id: hit.annotation.id,
+      base: annotations,
+      startNorm: np,
+      startTarget: { ...hit.annotation.target },
+      startScale: hit.annotation.scale ?? 1,
+      startDistPx: distPx,
+      moved: false,
+      last: annotations,
+    };
+    frameRef.current.setPointerCapture(event.pointerId);
+    setCursor(hit.mode === "resize" ? "nwse-resize" : "grabbing");
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!frameRef.current) return;
+    const np = toNorm(event);
+    if (!np) return;
+    const drag = dragRef.current;
+    if (!drag) {
+      const hit = hitTest(np);
+      setCursor(hit ? (hit.mode === "resize" ? "nwse-resize" : "move") : "crosshair");
+      return;
+    }
+    let next: Annotation[];
+    if (drag.mode === "move") {
+      const target = {
+        x: clamp(drag.startTarget.x + (np.x - drag.startNorm.x), 0, 1),
+        y: clamp(drag.startTarget.y + (np.y - drag.startNorm.y), 0, 1),
+      };
+      next = drag.base.map((a) => (a.id === drag.id ? { ...a, target } : a));
+    } else {
+      const tx = drag.startTarget.x * width;
+      const ty = drag.startTarget.y * height;
+      const curDist = Math.hypot(np.x * width - tx, np.y * height - ty);
+      const scale = clamp(drag.startScale * (curDist / drag.startDistPx), MIN_SCALE, MAX_SCALE);
+      next = drag.base.map((a) => (a.id === drag.id ? { ...a, scale } : a));
+    }
+    drag.moved = true;
+    drag.last = next;
+    onDragLive(next);
+  };
+
+  const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    setCursor("crosshair");
+    if (frameRef.current?.hasPointerCapture(event.pointerId)) {
+      frameRef.current.releasePointerCapture(event.pointerId);
+    }
+    if (!drag) return;
+    if (drag.moved) onDragEnd(drag.last);
+    else onDragCancel();
   };
 
   return (
@@ -500,7 +694,7 @@ function ImageEditor({
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-lg font-bold">どこを押してほしいですか？</h2>
-          <p className="text-sm text-[#6b6b6b]">画像上を1回押すと、丸と矢印が付きます。</p>
+          <p className="text-sm text-[#6b6b6b]">空いた場所を押すと案内を追加。丸を押して選び、ドラッグで移動できます。</p>
         </div>
         <span className="rounded-md border border-[#dedbd2] bg-[#faf8f2] px-3 py-1.5 text-sm text-[#5f5a52]">
           {annotations.length ? `${annotations.length}個の案内` : "未指定"}
@@ -510,6 +704,9 @@ function ImageEditor({
         <div
           ref={frameRef}
           onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
           className="relative mx-auto w-fit max-w-full cursor-crosshair touch-none bg-white"
           aria-label="押してほしい場所を指定"
         >
@@ -520,14 +717,24 @@ function ImageEditor({
             className="block max-h-[68vh] max-w-full select-none object-contain"
             draggable={false}
           />
-          <SvgOverlay width={image.width} height={image.height} annotations={annotations} />
+          <SvgOverlay width={width} height={height} annotations={annotations} selectedId={selectedId} />
         </div>
       </div>
     </section>
   );
 }
 
-function SvgOverlay({ width, height, annotations }: { width: number; height: number; annotations: Annotation[] }) {
+function SvgOverlay({
+  width,
+  height,
+  annotations,
+  selectedId,
+}: {
+  width: number;
+  height: number;
+  annotations: Annotation[];
+  selectedId: string | null;
+}) {
   return (
     <svg
       className="pointer-events-none absolute inset-0 h-full w-full"
@@ -540,15 +747,32 @@ function SvgOverlay({ width, height, annotations }: { width: number; height: num
         </marker>
       </defs>
       {annotations.map((annotation) => (
-        <AnnotationShape key={annotation.id} annotation={annotation} width={width} height={height} />
+        <AnnotationShape
+          key={annotation.id}
+          annotation={annotation}
+          width={width}
+          height={height}
+          selected={annotation.id === selectedId}
+        />
       ))}
     </svg>
   );
 }
 
-function AnnotationShape({ annotation, width, height }: { annotation: Annotation; width: number; height: number }) {
+function AnnotationShape({
+  annotation,
+  width,
+  height,
+  selected,
+}: {
+  annotation: Annotation;
+  width: number;
+  height: number;
+  selected: boolean;
+}) {
   const g = getAnnotationGeometry(annotation, width, height);
   const haloWidth = g.lineWidth + 5;
+  const dash = Math.max(8, Math.round(g.lineWidth * 2.5));
   return (
     <g>
       <ellipse cx={g.target.x} cy={g.target.y} rx={g.radiusX} ry={g.radiusY} fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth={haloWidth} />
@@ -575,6 +799,21 @@ function AnnotationShape({ annotation, width, height }: { annotation: Annotation
           {annotation.instruction}
         </div>
       </foreignObject>
+      {selected && (
+        <>
+          <ellipse
+            cx={g.target.x}
+            cy={g.target.y}
+            rx={g.radiusX + haloWidth}
+            ry={g.radiusY + haloWidth}
+            fill="none"
+            stroke="#1769e0"
+            strokeWidth={g.lineWidth * 0.8}
+            strokeDasharray={`${dash} ${dash}`}
+          />
+          <circle cx={g.handle.x} cy={g.handle.y} r={g.handle.r} fill="#ffffff" stroke="#1769e0" strokeWidth={Math.max(2, g.lineWidth * 0.7)} />
+        </>
+      )}
     </g>
   );
 }
