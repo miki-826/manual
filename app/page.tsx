@@ -243,6 +243,12 @@ export default function Home() {
     pushAnnotations(annotations);
   };
 
+  const applyInstruction = (instruction: string) => {
+    if (!selectedAnnotation) return;
+    const selected = selectedAnnotation.id;
+    pushAnnotations(annotations.map((a) => (a.id === selected ? { ...a, instruction } : a)));
+  };
+
   const resizeSelected = (factor: number) => {
     if (!selectedAnnotation) return;
     const selected = selectedAnnotation.id;
@@ -424,10 +430,7 @@ export default function Home() {
                       key={template}
                       type="button"
                       disabled={!selectedAnnotation}
-                      onClick={() => {
-                        updateInstruction(template);
-                        window.setTimeout(commitInstruction, 0);
-                      }}
+                      onClick={() => applyInstruction(template)}
                       className="rounded-md border border-[#dedbd2] bg-[#faf8f2] px-3 py-2 text-sm transition hover:bg-[#f1ede2] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#d92727] disabled:cursor-not-allowed disabled:opacity-45"
                     >
                       {template}
@@ -616,7 +619,13 @@ function ImageEditor({
       const g = getAnnotationGeometry(a, width, height);
       const dx = (px.x - g.target.x) / g.radiusX;
       const dy = (px.y - g.target.y) / g.radiusY;
-      if (dx * dx + dy * dy <= 1) return { mode: "move", annotation: a };
+      const inCircle = dx * dx + dy * dy <= 1;
+      const inLabel =
+        px.x >= g.label.x &&
+        px.x <= g.label.x + g.label.width &&
+        px.y >= g.label.y &&
+        px.y <= g.label.y + g.label.height;
+      if (inCircle || inLabel) return { mode: "move", annotation: a };
     }
     return null;
   };
